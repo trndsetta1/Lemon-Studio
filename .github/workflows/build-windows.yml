@@ -1,1 +1,44 @@
+name: Build Lemon Studio (Windows installer)
 
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build Lemon Studio
+        run: cargo build -p os-app --release --locked
+
+      - name: Build the plugins (VST3 + CLAP)
+        run: cargo run -p bundle-plugins --release --locked
+
+      - name: List build output
+        shell: pwsh
+        run: |
+          Get-ChildItem target\release\lemonstudio.exe
+          Get-ChildItem target\bundled
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build installer .exe
+        shell: pwsh
+        run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer\LemonStudio.iss'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LemonStudio-Windows-Installer
+          path: installer/Output/*.exe
