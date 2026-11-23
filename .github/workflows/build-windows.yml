@@ -5,6 +5,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  id-token: write       # needed for GitHub build attestations
+  attestations: write
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -38,7 +43,26 @@ jobs:
         shell: pwsh
         run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer\LemonStudio.iss'
 
+      # Verification 1: SHA-256 fingerprint, saved next to the installer and printed in the build summary
+      - name: Create SHA-256 checksum
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem installer\Output\*.exe | Select-Object -First 1
+          $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash
+          "$hash  $($exe.Name)" | Out-File -Encoding ascii "installer\Output\SHA256.txt"
+          "### Installer fingerprint (SHA-256)" >> $env:GITHUB_STEP_SUMMARY
+          "``$hash``  $($exe.Name)" >> $env:GITHUB_STEP_SUMMARY
+
+      # Verification 2: GitHub build provenance (proves this exe was built by this repo's workflow).
+      - name: GitHub build attestation
+        continue-on-error: true
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: installer/Output/*.exe
+
       - uses: actions/upload-artifact@v4
         with:
           name: LemonStudio-Windows-Installer
-          path: installer/Output/*.exe
+          path: |
+            installer/Output/*.exe
+            installer/Output/SHA256.txt
